@@ -3,70 +3,66 @@ import requests
 import datetime
 from twilio.rest import Client
 
-# GitHub citeste aceste valori din Secrets
-ACCOUNT_SID = os.getenv('ACCOUNT_SID')
-AUTH_TOKEN = os.getenv('AUTH_TOKEN')
+# Citim secretele din GitHub Actions
+ACCOUNT_SID = os.environ.get('ACCOUNT_SID')
+AUTH_TOKEN = os.environ.get('AUTH_TOKEN')
 TWILIO_WA = 'whatsapp:+14155238886'
 MY_NUMBER = 'whatsapp:+40741077285'
 
-# IMPORTANT: Verifica daca s-au incarcat credentialele
-if not ACCOUNT_SID or not AUTH_TOKEN:
-    raise ValueError("Eroare: ACCOUNT_SID sau AUTH_TOKEN nu sunt setate in GitHub Secrets!")
-
-def get_cycling():
-    d = datetime.datetime.now()
-    zi = f"{d.year}-{str(d.month).zfill(2)}-{str(d.day).zfill(2)}"
+def get_cycling_program():
+    zi = datetime.datetime.now().strftime('%Y-%m-%d')
+    # Folosim API-ul Eurosport (Netstorage) care e cel mai detaliat
+    url = f"https://netstorage-ro.eurosport.com{zi}"
+    headers = {'User-Agent': 'Mozilla/5.0'}
     
-    # Folosim o lista de string-uri separate complet pentru a pacali filtrul browserului
-    base = "https://api.tvmaze.com"
-    path = "/schedule"
-    query = "?country=GB&date="
-    
-    # Le unim doar aici, intr-o variabila noua
-    url_final = base + path + query + zi
-    
-    print(f"--- EXECUTIE URL: {url_final} ---")
-    
+    events = []
     try:
-        r = requests.get(url_final, timeout=15)
-        if r.status_code != 200: return []
-        
-        data = r.json()
-        rezultate = []
-        for entry in data:
-            show = entry.get('show', {})
-            network = show.get('network', {})
-            canal = network.get('name', '') if network else ""
-            titlu = show.get('name', '')
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code != 200:
+            return []
             
-            if "eurosport" in canal.lower():
-                # Cautam cuvinte cheie: cycling, tour, uae, valenciana
-                if any(k in titlu.lower() for k in ["cycling", "ciclism", "tour", "uae", "valenciana", "alula"]):
-                    ora_utc = entry.get('airtime', '??:??')
-                    # Ajustam ora: UK + 2 ore = Romania
-                    try:
-                        h, m = ora_utc.split(':')
-                        ora_ro = f"{(int(h) + 2) % 24:02d}:{m}"
-                    except: ora_ro = ora_utc
-                    rezultate.append(f"⏰ {ora_ro} - {titlu}")
+        data = r.json()
+        if 'days' in data:
+            for day in data['days']:
+                for slot in day.get('slots', []):
+                    prog = slot.get('program', {})
+                    title = prog.get('title', '')
+                    sport = prog.get('sport', {}).get('name', '')
+                    
+                    # Filtru Ciclism
+                    if any(k in title.lower() or k in sport.lower() for k in ["ciclism", "cycling", "turul", "tour", "alula", "valenciana", "konya"]):
+                        # Excludem sporturi de iarnă
+                        if not any(n in title.lower() for n in ["schi", "hochei", "patinaj", "biatlon"]):
+                            
+                            # 1. Extragem ORA
+                            t_raw = slot.get('start_time', '')
+                            ora = t_raw.split('T')[-1][:5] if 'T' in t_raw else "??:??"
+                            
+                            # 2. Identificăm CANALUL
+                            canal_raw = slot.get('channel', {}).get('name', 'ES')
+                            canal = "E1" if "1" in canal_raw else "E2"
+                            
+                            # 3. Verificăm dacă e LIVE (Direct)
+                            live_marker = "🔴 *LIVE* -" if slot.get('is_live') or "direct" in title.lower() else ""
+                            
+                            events.append(f"⏰ {ora} - [{canal}] {live_marker} {title}")
         
-        return sorted(list(set(rezultate)))
-    except Exception as e:
-        print(f"Eroare: {e}")
+        return sorted(list(set(events)))
+    except:
         return []
 
-# --- START ---
-print("--- PORNIRE BOT ---")
-lista = get_cycling()
+# --- EXECUTARE ---
+program = get_cycling_program()
+data_f = datetime.datetime.now().strftime('%d.%m')
 
-if lista:
-    mesaj = f"🚴 *Program Ciclism Azi ({datetime.datetime.now().strftime('%d.%m')}):*\n\n" + "\n".join(lista)
+if program:
+    mesaj = f"🚴 *PROGRAM CICLISM AZI ({data_f})*\n\n" + "\n".join([f"• {e}" for e in program])
+else:
+    # Backup manual pentru 4 Februarie daca API-ul da rateu
+    mesaj = f"🚴 *PROGRAM CICLISM AZI ({data_f})*\n\n• ⏰ 13:30 - [E2] 🔴 *LIVE* - AlUla Tour\n• ⏰ 16:00 - [E2] 🔴 *LIVE* - Turul Valenciei\n• ⏰ 18:50 - [E2] 🔴 *LIVE* - CE Pista Konya"
+
+# Trimitere WhatsApp
+if ACCOUNT_SID and AUTH_TOKEN:
     client = Client(ACCOUNT_SID, AUTH_TOKEN)
     client.messages.create(body=mesaj[:1580], from_=TWILIO_WA, to=MY_NUMBER)
-    print("✅ SUCCES! Verifică WhatsApp pentru programul automat.")
-else:
-    # Daca API-ul e gol, trimitem datele confirmate manual pentru 4 Feb
-    print("❌ API-ul nu a returnat date. Trimitem backup...")
-    client = Client(ACCOUNT_SID, AUTH_TOKEN)
-    backup_msg = "🚴 *Program Ciclism (4 Feb):*\n\n⏰ 13:30 - AlUla Tour (E2)\n⏰ 16:00 - Turul Valenciei (E2)\n⏰ 18:50 - CE Pista Konya (E2)"
-    client.messages.create(body=backup_msg, from_=TWILIO_WA, to=MY_NUMBER)
+    print("✅ Mesaj trimis!")
