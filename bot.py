@@ -4,9 +4,14 @@ import requests
 import datetime
 from twilio.rest import Client
 
+import os
+
+
+
 # === DATE TWILIO ===
-ACCOUNT_SID = 'AC2f4cc69be97f2c6fcc233a910f874c50'
-AUTH_TOKEN  = 'f12daedf4d8380baac43d731228ef413' 
+import os
+ACCOUNT_SID = os.getenv('ACCOUNT_SID')
+AUTH_TOKEN = os.getenv('AUTH_TOKEN')
 TWILIO_WA   = 'whatsapp:+14155238886'
 MY_NUMBER   = 'whatsapp:+40741077285'
 
