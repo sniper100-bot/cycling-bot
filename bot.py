@@ -1,4 +1,3 @@
-!pip install twilio requests
 
 import requests
 import datetime
