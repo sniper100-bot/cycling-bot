@@ -1,18 +1,17 @@
-
+import os
 import requests
 import datetime
 from twilio.rest import Client
 
-import os
-
-
-
-# === DATE TWILIO ===
-import os
+# GitHub citeste aceste valori din Secrets
 ACCOUNT_SID = os.getenv('ACCOUNT_SID')
 AUTH_TOKEN = os.getenv('AUTH_TOKEN')
-TWILIO_WA   = 'whatsapp:+14155238886'
-MY_NUMBER   = 'whatsapp:+40741077285'
+TWILIO_WA = 'whatsapp:+14155238886'
+MY_NUMBER = 'whatsapp:+40741077285'
+
+# IMPORTANT: Verifica daca s-au incarcat credentialele
+if not ACCOUNT_SID or not AUTH_TOKEN:
+    raise ValueError("Eroare: ACCOUNT_SID sau AUTH_TOKEN nu sunt setate in GitHub Secrets!")
 
 def get_cycling():
     d = datetime.datetime.now()
