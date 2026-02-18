@@ -33,27 +33,25 @@ def get_cycling_program():
         return []
 
 # --- EXECUTARE ---
-program = get_cycling_program()
-data_f = datetime.datetime.now().strftime('%d.%m')
-
-if program:
-    mesaj = f"🚴 *PROGRAM CICLISM AZI ({data_f})*\n\n" + "\n".join(program)
-else:
-    # MODIFICARE AICI: Nu mai pune text fix vechi!
-    mesaj = f"🚴 *PROGRAM CICLISM ({data_f})*\n\nNu s-au găsit transmisii live în baza de date Eurosport pentru azi.
-
 # --- EXECUTARE ---
-program = get_cycling_program()
-data_f = datetime.datetime.now().strftime('%d.%m')
+try:
+    program = get_cycling_program()
+    data_f = datetime.datetime.now().strftime('%d.%m')
 
-if program:
-    mesaj = f"🚴 *PROGRAM CICLISM AZI ({data_f})*\n\n" + "\n".join([f"• {e}" for e in program])
-else:
-    # Backup manual pentru 4 Februarie daca API-ul da rateu
-    mesaj = f"🚴 *PROGRAM CICLISM AZI ({data_f})*\n\n• ⏰ 13:30 - [E2] 🔴 *LIVE* - AlUla Tour\n• ⏰ 16:00 - [E2] 🔴 *LIVE* - Turul Valenciei\n• ⏰ 18:50 - [E2] 🔴 *LIVE* - CE Pista Konya"
+    if program and len(program) > 0:
+        mesaj = f"🚴 *PROGRAM CICLISM AZI ({data_f})*\n\n" + "\n".join([f"• {e}" for e in program])
+    else:
+        # FĂRĂ DATE VECHI! Trimitem un mesaj neutru dacă API-ul e picat
+        mesaj = f"🚴 *INFO CICLISM ({data_f})*\n\nNu am găsit transmisiuni noi în programul Eurosport pentru astăzi."
 
-# Trimitere WhatsApp
-if ACCOUNT_SID and AUTH_TOKEN:
-    client = Client(ACCOUNT_SID, AUTH_TOKEN)
-    client.messages.create(body=mesaj[:1580], from_=TWILIO_WA, to=MY_NUMBER)
-    print("✅ Mesaj trimis!")
+    # Trimitere WhatsApp
+    if ACCOUNT_SID and AUTH_TOKEN:
+        client = Client(ACCOUNT_SID, AUTH_TOKEN)
+        client.messages.create(body=mesaj[:1580], from_=TWILIO_WA, to=MY_NUMBER)
+        print("✅ Mesaj trimis cu succes!")
+    else:
+        print("❌ Eroare: Lipsesc SECRETELE (ACCOUNT_SID/AUTH_TOKEN) în GitHub!")
+
+except Exception as e:
+    print(f"❌ A apărut o eroare critică: {e}")
+
