@@ -10,10 +10,9 @@ TWILIO_WA = 'whatsapp:+14155238886'
 MY_NUMBER = 'whatsapp:+40741077285'
 
 def get_cycling_program():
-    def get_cycling_program():
     zi = datetime.datetime.now().strftime('%Y-%m-%d')
-    # ATENȚIE: Acest URL trebuie să fie unul valid. 
-    # Eurosport folosește acum adesea: https://www.eurosport.ro{zi}
+    # URL-ul de mai jos este simbolic, Eurosport nu are un API JSON public direct la acest link.
+    # Dacă returnează 404 sau eroare, botul va trimite mesajul de "Nu am găsit".
     url = f"https://www.eurosport.ro{zi}"
     headers = {'User-Agent': 'Mozilla/5.0'}
     
@@ -24,34 +23,37 @@ def get_cycling_program():
             return []
             
         data = r.json()
-        # Structura JSON de la Eurosport se schimbă des. 
-        # Trebuie verificat în "Inspect Element" -> "Network" pe site-ul lor ce chei apar.
-        # ... (restul logicii de filtrare) ...
+        # Logica de filtrare (depinde de structura JSON a Eurosport)
+        if 'slots' in data:
+            for slot in data.get('slots', []):
+                title = slot.get('program', {}).get('title', '').lower()
+                if any(k in title for k in ["ciclism", "cycling", "tour", "turul"]):
+                    ora = slot.get('start_time', '').split('T')[-1][:5]
+                    events.append(f"⏰ {ora} - {title.title()}")
+        
         return sorted(list(set(events)))
     except Exception as e:
-        print(f"Eroare API: {e}")
+        print(f"Eroare la parsare: {e}")
         return []
 
-# --- EXECUTARE ---
 # --- EXECUTARE ---
 try:
     program = get_cycling_program()
     data_f = datetime.datetime.now().strftime('%d.%m')
 
-    if program and len(program) > 0:
+    if program:
         mesaj = f"🚴 *PROGRAM CICLISM AZI ({data_f})*\n\n" + "\n".join([f"• {e}" for e in program])
     else:
-        # FĂRĂ DATE VECHI! Trimitem un mesaj neutru dacă API-ul e picat
+        # FĂRĂ TEXT VECHI - Mesaj de siguranță
         mesaj = f"🚴 *INFO CICLISM ({data_f})*\n\nNu am găsit transmisiuni noi în programul Eurosport pentru astăzi."
 
     # Trimitere WhatsApp
     if ACCOUNT_SID and AUTH_TOKEN:
         client = Client(ACCOUNT_SID, AUTH_TOKEN)
         client.messages.create(body=mesaj[:1580], from_=TWILIO_WA, to=MY_NUMBER)
-        print("✅ Mesaj trimis cu succes!")
+        print("✅ Mesaj trimis!")
     else:
-        print("❌ Eroare: Lipsesc SECRETELE (ACCOUNT_SID/AUTH_TOKEN) în GitHub!")
+        print("❌ Lipsesc secretele Twilio!")
 
 except Exception as e:
-    print(f"❌ A apărut o eroare critică: {e}")
-
+    print(f"❌ Eroare critică: {e}")
