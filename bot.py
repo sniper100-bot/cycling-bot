@@ -41,19 +41,17 @@ try:
     program = get_cycling_program()
     data_f = datetime.datetime.now().strftime('%d.%m')
 
-    if program:
-        mesaj = f"🚴 *PROGRAM CICLISM AZI ({data_f})*\n\n" + "\n".join([f"• {e}" for e in program])
+    # Forțăm un mesaj de test dacă programul e gol
+    if not program:
+        mesaj = f"🚴 *TEST BOT ({data_f})*\n\nConexiunea e bună, dar API-ul Eurosport nu a returnat curse de ciclism azi."
     else:
-        # FĂRĂ TEXT VECHI - Mesaj de siguranță
-        mesaj = f"🚴 *INFO CICLISM ({data_f})*\n\nNu am găsit transmisiuni noi în programul Eurosport pentru astăzi."
+        mesaj = f"🚴 *PROGRAM CICLISM AZI ({data_f})*\n\n" + "\n".join([f"• {e}" for e in program])
 
     # Trimitere WhatsApp
     if ACCOUNT_SID and AUTH_TOKEN:
         client = Client(ACCOUNT_SID, AUTH_TOKEN)
+        # Trimitem mesajul indiferent de rezultat pentru a testa Twilio
         client.messages.create(body=mesaj[:1580], from_=TWILIO_WA, to=MY_NUMBER)
-        print("✅ Mesaj trimis!")
+        print("✅ Mesaj trimis către Twilio!")
     else:
-        print("❌ Lipsesc secretele Twilio!")
-
-except Exception as e:
-    print(f"❌ Eroare critică: {e}")
+        print("❌ Lipsesc SECRETELE!")
