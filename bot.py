@@ -10,9 +10,11 @@ TWILIO_WA = 'whatsapp:+14155238886'
 MY_NUMBER = 'whatsapp:+40741077285'
 
 def get_cycling_program():
+    def get_cycling_program():
     zi = datetime.datetime.now().strftime('%Y-%m-%d')
-    # Folosim API-ul Eurosport (Netstorage) care e cel mai detaliat
-    url = f"https://netstorage-ro.eurosport.com{zi}"
+    # ATENȚIE: Acest URL trebuie să fie unul valid. 
+    # Eurosport folosește acum adesea: https://www.eurosport.ro{zi}
+    url = f"https://www.eurosport.ro{zi}"
     headers = {'User-Agent': 'Mozilla/5.0'}
     
     events = []
@@ -22,34 +24,23 @@ def get_cycling_program():
             return []
             
         data = r.json()
-        if 'days' in data:
-            for day in data['days']:
-                for slot in day.get('slots', []):
-                    prog = slot.get('program', {})
-                    title = prog.get('title', '')
-                    sport = prog.get('sport', {}).get('name', '')
-                    
-                    # Filtru Ciclism
-                    if any(k in title.lower() or k in sport.lower() for k in ["ciclism", "cycling", "turul", "tour", "alula", "valenciana", "konya"]):
-                        # Excludem sporturi de iarnă
-                        if not any(n in title.lower() for n in ["schi", "hochei", "patinaj", "biatlon"]):
-                            
-                            # 1. Extragem ORA
-                            t_raw = slot.get('start_time', '')
-                            ora = t_raw.split('T')[-1][:5] if 'T' in t_raw else "??:??"
-                            
-                            # 2. Identificăm CANALUL
-                            canal_raw = slot.get('channel', {}).get('name', 'ES')
-                            canal = "E1" if "1" in canal_raw else "E2"
-                            
-                            # 3. Verificăm dacă e LIVE (Direct)
-                            live_marker = "🔴 *LIVE* -" if slot.get('is_live') or "direct" in title.lower() else ""
-                            
-                            events.append(f"⏰ {ora} - [{canal}] {live_marker} {title}")
-        
+        # Structura JSON de la Eurosport se schimbă des. 
+        # Trebuie verificat în "Inspect Element" -> "Network" pe site-ul lor ce chei apar.
+        # ... (restul logicii de filtrare) ...
         return sorted(list(set(events)))
-    except:
+    except Exception as e:
+        print(f"Eroare API: {e}")
         return []
+
+# --- EXECUTARE ---
+program = get_cycling_program()
+data_f = datetime.datetime.now().strftime('%d.%m')
+
+if program:
+    mesaj = f"🚴 *PROGRAM CICLISM AZI ({data_f})*\n\n" + "\n".join(program)
+else:
+    # MODIFICARE AICI: Nu mai pune text fix vechi!
+    mesaj = f"🚴 *PROGRAM CICLISM ({data_f})*\n\nNu s-au găsit transmisii live în baza de date Eurosport pentru azi.
 
 # --- EXECUTARE ---
 program = get_cycling_program()
