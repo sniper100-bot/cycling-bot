@@ -39,29 +39,26 @@ def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 def _extract_events_from_text(text: str):
-    """
-    Extrage perechi (HH:MM, titlu) din textul paginii.
-    Heuristic robust: caută toate orele și ia linia imediat următoare (sau următoarele) ca titlu.
-    """
     lines = [_norm(x) for x in text.split("\n")]
     lines = [x for x in lines if x]
 
     events = []
-    for i in range(len(lines) - 1):
+    for i in range(len(lines) - 2):
+        # ora validă
         if re.match(r"^\d{1,2}:\d{2}$", lines[i]):
-            t = lines[i]
-            # caută primul "titlu" valid în următoarele 1-3 linii (uneori e layout dublat)
-            for j in range(1, 4):
-                if i + j >= len(lines): break
-                title = lines[i + j]
-                low = title.lower()
-                # ignoră linii prea scurte sau duplicate de oră
-                if re.match(r"^\d{1,2}:\d{2}$", title): 
+            hour = lines[i]
+            title = lines[i + 1] + " " + lines[i + 2]
+            low = title.lower()
+
+            # IMPORTANT: acceptă DOAR ciclism
+            if any(k in low for k in KEYWORDS):
+                # elimină explicit alte sporturi
+                if any(x in low for x in ["snooker", "tenis", "fotbal", "handbal", "baschet"]):
                     continue
-                if any(k in low for k in KEYWORDS):
-                    events.append((t, title))
-                    break
-    # dedup + sort
+
+                events.append((hour, title.strip()))
+
+    # deduplicare + sort
     events = sorted(set(events), key=lambda x: x[0])
     return events
 
