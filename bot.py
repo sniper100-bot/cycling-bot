@@ -1,55 +1,117 @@
 import os
+import re
+import datetime as dt
+from zoneinfo import ZoneInfo
+
 import requests
-import datetime
+from bs4 import BeautifulSoup
 from twilio.rest import Client
 
-# Configurare Secrete
-ACCOUNT_SID = os.environ.get('ACCOUNT_SID')
-AUTH_TOKEN = os.environ.get('AUTH_TOKEN')
-TWILIO_WA = 'whatsapp:+14155238886'
-MY_NUMBER = 'whatsapp:+40741077285'
+# ============ TWILIO SECRETS ============
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID") or os.environ.get("ACCOUNT_SID")
+TWILIO_AUTH_TOKEN  = os.environ.get("TWILIO_AUTH_TOKEN")  or os.environ.get("AUTH_TOKEN")
 
-def get_cycling_program():
-    zi = datetime.datetime.now().strftime('%Y-%m-%d')
-    # Încercăm un URL mai simplu pentru Eurosport (poate fi instabil)
-    url = f"https://www.eurosport.ro{zi}"
-    headers = {'User-Agent': 'Mozilla/5.0'}
+TWILIO_WA = "whatsapp:+14155238886"
+MY_NUMBER = "whatsapp:+40741077285"
+
+# ============ SOURCES (RO) ============
+SOURCES = {
+    "Eurosport 1": [
+        "https://www.gsp.ro/program-tv/eurosport-1-11.html",        # :contentReference[oaicite:2]{index=2}
+        "https://m.cinemagia.ro/program-tv/eurosport-1/",           # :contentReference[oaicite:3]{index=3}
+        "https://www.cinemagia.ro/program-tv/eurosport-1/",         # :contentReference[oaicite:4]{index=4}
+    ],
+    "Eurosport 2": [
+        "https://www.gsp.ro/program-tv/eurosport-2-7.html",         # :contentReference[oaicite:5]{index=5}
+        "https://m.cinemagia.ro/program-tv/eurosport-2/",           # :contentReference[oaicite:6]{index=6}
+        "https://www.cinemagia.ro/program-tv/eurosport-2/",         # :contentReference[oaicite:7]{index=7}
+    ],
+}
+
+KEYWORDS = [
+    "ciclism", "cycling", "tour", "turul", "giro", "vuelta",
+    "uci", "cyclocross", "ciclocross", "mtb", "bmx"
+]
+
+UA = {"User-Agent": "Mozilla/5.0"}
+
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip()
+
+def _extract_events_from_text(text: str):
+    """
+    Extrage perechi (HH:MM, titlu) din textul paginii.
+    Heuristic robust: caută toate orele și ia linia imediat următoare (sau următoarele) ca titlu.
+    """
+    lines = [_norm(x) for x in text.split("\n")]
+    lines = [x for x in lines if x]
+
     events = []
-    
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            # Căutăm meciuri în structura Eurosport
-            for slot in data.get('slots', []):
-                title = slot.get('program', {}).get('title', '').lower()
-                if any(k in title for k in ["ciclism", "cycling", "tour", "turul"]):
-                    ora = slot.get('start_time', '').split('T')[-1][:5]
-                    events.append(f"⏰ {ora} - {title.title()}")
-    except Exception as e:
-        print(f"Eroare API: {e}")
-    
-    return sorted(list(set(events)))
+    for i in range(len(lines) - 1):
+        if re.match(r"^\d{1,2}:\d{2}$", lines[i]):
+            t = lines[i]
+            # caută primul "titlu" valid în următoarele 1-3 linii (uneori e layout dublat)
+            for j in range(1, 4):
+                if i + j >= len(lines): break
+                title = lines[i + j]
+                low = title.lower()
+                # ignoră linii prea scurte sau duplicate de oră
+                if re.match(r"^\d{1,2}:\d{2}$", title): 
+                    continue
+                if any(k in low for k in KEYWORDS):
+                    events.append((t, title))
+                    break
+    # dedup + sort
+    events = sorted(set(events), key=lambda x: x[0])
+    return events
 
-# --- EXECUTARE ---
-try:
-    program = get_cycling_program()
-    data_f = datetime.datetime.now().strftime('%d.%m')
+def fetch_channel(channel_name: str):
+    for url in SOURCES[channel_name]:
+        try:
+            r = requests.get(url, headers=UA, timeout=20)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            text = soup.get_text("\n")
+            events = _extract_events_from_text(text)
+            # dacă nu găsim ciclism, poate layout-ul e altul azi; trecem la următoarea sursă
+            if events:
+                return events, url
+        except Exception:
+            continue
+    return [], None
 
-    if program:
-        mesaj = f"🚴 *PROGRAM CICLISM AZI ({data_f})*\n\n" + "\n".join([f"• {e}" for e in program])
-    else:
-        # Mesaj de TEST ca să verificăm dacă Twilio merge
-        mesaj = f"🚴 *BOT CICLISM ({data_f})*\n\nNu am găsit nicio cursă în programul Eurosport pentru astăzi. Verifică manual pe site!"
+def build_message():
+    ro_tz = ZoneInfo("Europe/Bucharest")
+    now = dt.datetime.now(ro_tz)
+    data_f = now.strftime("%d.%m.%Y")
 
-    # Trimitere WhatsApp
-    if ACCOUNT_SID and AUTH_TOKEN:
-        client = Client(ACCOUNT_SID, AUTH_TOKEN)
-        client.messages.create(body=mesaj[:1500], from_=TWILIO_WA, to=MY_NUMBER)
-        print("✅ Script finalizat cu succes!")
-    else:
-        print("❌ Lipsesc ACCOUNT_SID sau AUTH_TOKEN din GitHub Secrets!")
+    es1, src1 = fetch_channel("Eurosport 1")
+    es2, src2 = fetch_channel("Eurosport 2")
 
-except Exception as e:
-    print(f"❌ Eroare fatală în script: {e}")
+    def fmt(ch, events, src):
+        if not events:
+            return f"*{ch}*\n— nimic de ciclism detectat azi."
+        lines = "\n".join([f"• ⏰ {t} — {title}" for t, title in events])
+        return f"*{ch}*\n{lines}"
 
+    msg = (
+        f"🚴 *PROGRAM CICLISM (RO) — {data_f}*\n\n"
+        f"{fmt('Eurosport 1', es1, src1)}\n\n"
+        f"{fmt('Eurosport 2', es2, src2)}"
+    )
+
+    # (opțional) dacă vrei să vezi sursa folosită, deblochează:
+    # msg += f"\n\n(Surse: ES1={src1 or 'n/a'} | ES2={src2 or 'n/a'})"
+
+    return msg[:1500]
+
+def send_whatsapp(message: str):
+    if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN):
+        raise RuntimeError("Lipsesc TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN din Secrets (GitHub).")
+    client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    client.messages.create(body=message, from_=TWILIO_WA, to=MY_NUMBER)
+
+if __name__ == "__main__":
+    mesaj = build_message()
+    send_whatsapp(mesaj)
+    print("✅ Trimis pe WhatsApp.")
