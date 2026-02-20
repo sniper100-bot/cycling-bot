@@ -38,29 +38,52 @@ UA = {"User-Agent": "Mozilla/5.0"}
 def _norm(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
+import re
+
+KEYWORDS = [
+    "ciclism", "cycling", "tour", "turul", "giro", "vuelta",
+    "uci", "cyclocross", "ciclocross", "mtb", "bmx"
+]
+EXCLUDE = ["snooker", "tenis", "fotbal", "handbal", "baschet", "formula", "f1", "moto"]
+
 def _extract_events_from_text(text: str):
-    lines = [_norm(x) for x in text.split("\n")]
-    lines = [x for x in lines if x]
+    # Normalizează spațiile ca să fie regex-ul stabil
+    t = re.sub(r"\s+", " ", text).strip()
+
+    # Prinde: HH:MM urmat de titlu până la următoarea HH:MM (sau final)
+    pattern = re.compile(r"(\d{1,2}:\d{2})\s+(.*?)(?=\s+\d{1,2}:\d{2}\s+|$)")
 
     events = []
-    for i in range(len(lines) - 2):
-        # ora validă
-        if re.match(r"^\d{1,2}:\d{2}$", lines[i]):
-            hour = lines[i]
-            title = lines[i + 1] + " " + lines[i + 2]
-            low = title.lower()
+    for hour, title in pattern.findall(t):
+        title = title.strip(" -•|")
 
-            # IMPORTANT: acceptă DOAR ciclism
-            if any(k in low for k in KEYWORDS):
-                # elimină explicit alte sporturi
-                if any(x in low for x in ["snooker", "tenis", "fotbal", "handbal", "baschet"]):
-                    continue
+        low = title.lower()
 
-                events.append((hour, title.strip()))
+        # Acceptă doar ciclism
+        if not any(k in low for k in KEYWORDS):
+            continue
 
-    # deduplicare + sort
+        # Exclude sporturi/paraziți
+        if any(x in low for x in EXCLUDE):
+            continue
+
+        # Curățare paraziți de tip „Sambata/Duminica” etc.
+        title = re.sub(r"\b(Sâmbătă|Sambata|Duminică|Duminica|Luni|Marți|Miercuri|Joi|Vineri)\b", "", title, flags=re.I).strip()
+
+        # opțional: dacă vrei să ignori noaptea
+        # h = int(hour.split(":")[0])
+        # if h < 7:
+        #     continue
+
+        events.append((hour, title))
+
+    # dedup + sort
     events = sorted(set(events), key=lambda x: x[0])
     return events
+
+
+
+
 
 def fetch_channel(channel_name: str):
     for url in SOURCES[channel_name]:
