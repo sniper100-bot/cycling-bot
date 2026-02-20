@@ -1,21 +1,27 @@
 name: Daily Cycling Update
+
 on:
   schedule:
-    - cron: '0 6 * * *' # Rulează zilnic la ora 06:00 UTC (ora 08:00 RO)
-  workflow_dispatch: # Permite rularea manuală pentru test
+    - cron: '0 6 * * *' # 06:00 UTC = 08:00 RO
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
+
       - name: Install dependencies
-        run: pip install twilio requests
+        run: |
+          python -m pip install --upgrade pip
+          pip install twilio requests beautifulsoup4
+
       - name: Run bot
         env:
           ACCOUNT_SID: ${{ secrets.ACCOUNT_SID }}
